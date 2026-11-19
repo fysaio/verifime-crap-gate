@@ -1,0 +1,56 @@
+name: Traceyard
+run-name: Traceyard ${{ inputs.run_request }}
+on:
+  workflow_dispatch:
+    inputs:
+      run_request:
+        description: Traceyard check request
+        required: true
+        type: string
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: traceyard-${{ github.repository_id }}
+  cancel-in-progress: false
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Fetch Traceyard runner
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: fysaio/traceyard
+          ref: fcec074fd530295ff64a0ff2f1c5b6dcb5527669
+          path: .traceyard-runner
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            **/package-lock.json
+            .traceyard-runner/runner/package/package-lock.json
+      - name: Install runner dependencies
+        run: npm ci --prefix .traceyard-runner/runner/package --omit=dev --ignore-scripts --no-audit --no-fund --prefer-offline
+      - name: Prepare trusted runner
+        run: node .traceyard-runner/runner/prepare.mjs
+      - name: Discover, build and test
+        env:
+          CI: 'true'
+          NPM_CONFIG_PREFER_OFFLINE: 'true'
+          NPM_CONFIG_AUDIT: 'false'
+          NPM_CONFIG_FUND: 'false'
+          NPM_CONFIG_FETCH_TIMEOUT: '30000'
+          NPM_CONFIG_FETCH_RETRIES: '1'
+          WRANGLER_SEND_METRICS: 'false'
+          WRANGLER_SEND_ERROR_REPORTS: 'false'
+          TRACEYARD_ORIGIN: "https://traceyard.pilotsaviour229.workers.dev"
+          TRACEYARD_RUN_REQUEST: ${{ inputs.run_request }}
+          TRACEYARD_GITHUB_FETCH_TOKEN: ${{ github.token }}
+        run: node .traceyard-runner/runner/package/agent/cli.mjs run .
